@@ -34,21 +34,16 @@ classdef BookManager < handle
             self.colorStackBases.blue = [0.15, -0.525, defaultStackHeight];
             self.colorStackBases.red = [-0.15, -0.525, defaultStackHeight];
 
-            emptyRecord = struct('handle', {}, 'color', {}, 'position', {}, ...
-                                 'topSurface', {}, 'originalVerts', {}, 'height', {}, ...
-                                 'isProcessed', {});
             self.colorStackRecords = struct();
-            self.colorStackRecords.green = emptyRecord;
-            self.colorStackRecords.blue = emptyRecord;
-            self.colorStackRecords.red = emptyRecord;
 
             self.robotDeliveryBases = struct();
             self.robotDeliveryBases.Motoman = [0.85, 1.05, defaultStackHeight];
             self.robotDeliveryBases.Kuka = [-0.85, -1.05, defaultStackHeight];
             self.robotDeliveryBases.Aubo = [1.35, -0.25, defaultStackHeight];
-            self.robotDeliveryCounts = struct('Motoman', 0, 'Kuka', 0, 'Aubo', 0);
 
+            self.applyDynamicLayouts();
             self.resetColorStacks();
+            self.resetDeliveryCounts();
         end
 
         function storeBookHandles(self)
@@ -214,8 +209,9 @@ classdef BookManager < handle
             self.currentBookIndex = 1;
             self.booksPlaced = 0;
             self.originalBookHandles = {};
+            self.applyDynamicLayouts();
             self.resetColorStacks();
-            self.robotDeliveryCounts = struct('Motoman', 0, 'Kuka', 0, 'Aubo', 0);
+            self.resetDeliveryCounts();
             self.deliveryLog = {};
             fprintf('Book manager reset\n');
         end
@@ -254,9 +250,7 @@ classdef BookManager < handle
                 colorName = lower(char(colorIdentifier));
             end
 
-            if ~isfield(self.colorStackCounts, colorName)
-                error('Unknown color stack request: %s', colorName);
-            end
+            self.ensureColorStackStructures(colorName);
 
             level = self.colorStackCounts.(colorName);
             basePos = self.colorStackBases.(colorName);
@@ -268,11 +262,19 @@ classdef BookManager < handle
         end
 
         function resetColorStacks(self)
-            self.colorStackCounts = struct('green', 0, 'blue', 0, 'red', 0);
-            emptyRecord = struct('handle', {}, 'color', {}, 'position', {}, 'topSurface', {}, 'originalVerts', {}, 'height', {}, 'isProcessed', {});
-            self.colorStackRecords.green = emptyRecord;
-            self.colorStackRecords.blue = emptyRecord;
-            self.colorStackRecords.red = emptyRecord;
+            emptyRecord = self.createEmptyStackRecord();
+            colorNames = fieldnames(self.colorStackBases);
+            counts = struct();
+            records = struct();
+
+            for idx = 1:numel(colorNames)
+                color = colorNames{idx};
+                counts.(color) = 0;
+                records.(color) = emptyRecord;
+            end
+
+            self.colorStackCounts = counts;
+            self.colorStackRecords = records;
         end
 
         function registerPlacedBook(self, bookHandle, colorName, finalCenter, finalVerts)
@@ -285,9 +287,7 @@ classdef BookManager < handle
             end
 
             colorName = lower(char(colorName));
-            if ~isfield(self.colorStackRecords, colorName)
-                error('Unknown colour stack "%s" when registering placement.', colorName);
-            end
+            self.ensureColorStackStructures(colorName);
 
             entry.handle = bookHandle;
             entry.color = colorName;
@@ -300,31 +300,44 @@ classdef BookManager < handle
             records = self.colorStackRecords.(colorName);
             records(end+1) = entry; %#ok<AGROW>
             self.colorStackRecords.(colorName) = records;
+            self.colorStackCounts.(colorName) = numel(records);
         end
 
-        function entry = popBookFromColorStack(self, colorName)
+        function [entry, stackInfo] = popBookFromColorStack(self, colorName)
             if nargin < 2 || isempty(colorName)
                 entry = [];
+                if nargout >= 2
+                    stackInfo = self.createEmptyStackInfo('unknown');
+                end
                 return;
             end
 
             colorName = lower(char(colorName));
-            if ~isfield(self.colorStackRecords, colorName)
-                entry = [];
-                return;
-            end
+            self.ensureColorStackStructures(colorName);
 
             records = self.colorStackRecords.(colorName);
             if isempty(records)
                 entry = [];
+                if nargout >= 2
+                    stackInfo = self.buildStackInfo(colorName, records);
+                end
                 return;
             end
 
+            countBefore = numel(records);
             tops = arrayfun(@(r) r.topSurface(3), records);
             [~, idx] = max(tops);
             entry = records(idx);
             records(idx) = [];
             self.colorStackRecords.(colorName) = records;
+            self.colorStackCounts.(colorName) = numel(records);
+
+            if nargout >= 2
+                stackInfo = self.buildStackInfo(colorName, records);
+                stackInfo.level = countBefore;
+                stackInfo.pickedTop = entry.topSurface;
+                stackInfo.pickedCenter = entry.position;
+            end
         end
 
         function pushBookBack(self, colorName, entry)
@@ -333,23 +346,30 @@ classdef BookManager < handle
             end
 
             colorName = lower(char(colorName));
-            if ~isfield(self.colorStackRecords, colorName)
-                return;
-            end
+            self.ensureColorStackStructures(colorName);
 
             records = self.colorStackRecords.(colorName);
             records(end+1) = entry; %#ok<AGROW>
             self.colorStackRecords.(colorName) = records;
+            self.colorStackCounts.(colorName) = numel(records);
         end
 
         function count = getColorStackSize(self, colorName)
             colorName = lower(char(colorName));
-            if ~isfield(self.colorStackRecords, colorName)
-                count = 0;
-                return;
-            end
+            self.ensureColorStackStructures(colorName);
             records = self.colorStackRecords.(colorName);
             count = numel(records);
+        end
+
+        function stackInfo = getColorStackInfo(self, colorName)
+            if nargin < 2 || isempty(colorName)
+                colorName = 'unknown';
+            end
+
+            colorName = lower(char(colorName));
+            self.ensureColorStackStructures(colorName);
+            records = self.colorStackRecords.(colorName);
+            stackInfo = self.buildStackInfo(colorName, records);
         end
 
         function targetPos = getRobotDeliveryPosition(self, robotKey)
@@ -362,9 +382,7 @@ classdef BookManager < handle
             end
 
             robotField = matlab.lang.makeValidName(robotKey);
-            if ~isfield(self.robotDeliveryBases, robotField)
-                error('Unknown robot delivery zone "%s".', robotKey);
-            end
+            self.ensureRobotDeliveryStructures(robotField);
 
             basePos = self.robotDeliveryBases.(robotField);
             level = self.robotDeliveryCounts.(robotField);
@@ -391,9 +409,8 @@ classdef BookManager < handle
             self.deliveryLog{end+1} = logEntry;
 
             robotField = matlab.lang.makeValidName(robotKey);
-            if isfield(self.robotDeliveryCounts, robotField)
-                self.robotDeliveryCounts.(robotField) = self.robotDeliveryCounts.(robotField) + 1;
-            end
+            self.ensureRobotDeliveryStructures(robotField);
+            self.robotDeliveryCounts.(robotField) = self.robotDeliveryCounts.(robotField) + 1;
         end
 
         function colorStr = getBookColorString(self, bookInfo)
@@ -463,6 +480,166 @@ classdef BookManager < handle
     end
 
     methods (Access = private)
+        function applyDynamicLayouts(self)
+            defaultStackHeight = self.bookHeights - 0.05;
+            spawnerMethods = methods('BookSpawner');
+
+            if any(strcmp(spawnerMethods, 'getColorStackLayout'))
+                try
+                    layout = BookSpawner.getColorStackLayout();
+                catch ME
+                    warning('BookManager:ColorStackLayout', 'Failed to read colour stack layout: %s', ME.message);
+                    layout = [];
+                end
+
+                if ~isempty(layout)
+                    for idx = 1:numel(layout)
+                        entry = layout(idx);
+                        if ~isfield(entry, 'color') || isempty(entry.color)
+                            continue;
+                        end
+                        colorName = lower(char(entry.color));
+                        position = [];
+                        if isfield(entry, 'position')
+                            position = entry.position;
+                        end
+                        self.colorStackBases.(colorName) = self.normalisePositionVector(position, defaultStackHeight);
+                    end
+                end
+            end
+
+            if any(strcmp(spawnerMethods, 'getDeliveryZoneLayout'))
+                try
+                    layout = BookSpawner.getDeliveryZoneLayout();
+                catch ME
+                    warning('BookManager:DeliveryZoneLayout', 'Failed to read delivery zone layout: %s', ME.message);
+                    layout = [];
+                end
+
+                if ~isempty(layout)
+                    for idx = 1:numel(layout)
+                        entry = layout(idx);
+                        if ~isfield(entry, 'robot') || isempty(entry.robot)
+                            continue;
+                        end
+                        robotField = matlab.lang.makeValidName(entry.robot);
+                        position = [];
+                        if isfield(entry, 'position')
+                            position = entry.position;
+                        end
+                        self.robotDeliveryBases.(robotField) = self.normalisePositionVector(position, defaultStackHeight);
+                    end
+                end
+            end
+        end
+
+        function resetDeliveryCounts(self)
+            robotNames = fieldnames(self.robotDeliveryBases);
+            counts = struct();
+            for idx = 1:numel(robotNames)
+                counts.(robotNames{idx}) = 0;
+            end
+            self.robotDeliveryCounts = counts;
+        end
+
+        function ensureColorStackStructures(self, colorName)
+            if nargin < 2 || isempty(colorName)
+                colorName = 'unknown';
+            end
+
+            colorName = lower(char(colorName));
+            if ~isfield(self.colorStackBases, colorName)
+                defaultStackHeight = self.bookHeights - 0.05;
+                offset = 0.2 * (numel(fieldnames(self.colorStackBases)) + 1);
+                self.colorStackBases.(colorName) = [offset, -0.525, defaultStackHeight];
+            end
+
+            if ~isfield(self.colorStackCounts, colorName)
+                self.colorStackCounts.(colorName) = 0;
+            end
+
+            if ~isfield(self.colorStackRecords, colorName)
+                self.colorStackRecords.(colorName) = self.createEmptyStackRecord();
+            end
+        end
+
+        function ensureRobotDeliveryStructures(self, robotField)
+            if nargin < 2 || isempty(robotField)
+                return;
+            end
+
+            if ~isfield(self.robotDeliveryBases, robotField)
+                defaultStackHeight = self.bookHeights - 0.05;
+                offset = 0.4 * (numel(fieldnames(self.robotDeliveryBases)) + 1);
+                self.robotDeliveryBases.(robotField) = [offset, 0.8, defaultStackHeight];
+            end
+
+            if ~isfield(self.robotDeliveryCounts, robotField)
+                self.robotDeliveryCounts.(robotField) = 0;
+            end
+        end
+
+        function emptyRecord = createEmptyStackRecord(~)
+            emptyRecord = struct('handle', {}, 'color', {}, 'position', {}, ...
+                                 'topSurface', {}, 'originalVerts', {}, 'height', {}, ...
+                                 'isProcessed', {});
+        end
+
+        function info = buildStackInfo(self, colorName, records)
+            if nargin < 3
+                records = [];
+            end
+
+            base = [0, 0, self.bookHeights - 0.05];
+            if isfield(self.colorStackBases, colorName)
+                base = self.colorStackBases.(colorName);
+            end
+
+            info = struct();
+            info.color = colorName;
+            info.base = base;
+            info.count = numel(records);
+            if isempty(records)
+                info.topHeight = base(3);
+            else
+                tops = arrayfun(@(r) r.topSurface(3), records);
+                info.topHeight = max(tops);
+            end
+            info.level = info.count;
+            info.pickedTop = [NaN, NaN, NaN];
+            info.pickedCenter = [NaN, NaN, NaN];
+        end
+
+        function info = createEmptyStackInfo(self, colorName)
+            if nargin < 2 || isempty(colorName)
+                colorName = 'unknown';
+            end
+
+            info = self.buildStackInfo(colorName, []);
+        end
+
+        function position = normalisePositionVector(self, position, defaultHeight)
+            if nargin < 3 || isempty(defaultHeight)
+                defaultHeight = self.bookHeights - 0.05;
+            end
+
+            if nargin < 2 || isempty(position)
+                position = [0, 0, defaultHeight];
+                return;
+            end
+
+            position = position(:)';
+
+            if numel(position) < 3
+                position(3) = defaultHeight;
+            else
+                position = position(1:3);
+                if ~isfinite(position(3))
+                    position(3) = defaultHeight;
+                end
+            end
+        end
+
         function record = buildBookRecord(self, handle, verts)
             center = mean(verts, 1);
             maxVals = max(verts, [], 1);

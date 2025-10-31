@@ -12,10 +12,18 @@ function delivered = KukaPickAndPlace(robot, bookManager, colorName, safetyContr
     moveKukaToHomePosition(robot, homeQ, safetyController);
 
     while true
-        entry = bookManager.popBookFromColorStack(colorName);
+        [entry, stackInfo] = bookManager.popBookFromColorStack(colorName);
         if isempty(entry)
+            if delivered == 0
+                info = bookManager.getColorStackInfo(colorName);
+                fprintf('KUKA stack for %s is empty at [%.3f, %.3f, %.3f].\n', ...
+                    char(colorName), info.base(1), info.base(2), info.base(3));
+            end
             break;
         end
+
+        fprintf('KUKA retrieving %s book from stack base [%.3f, %.3f, %.3f] level %d.\n', ...
+            char(colorName), stackInfo.base(1), stackInfo.base(2), stackInfo.base(3), stackInfo.level);
 
         targetPos = bookManager.getRobotDeliveryPosition('Kuka');
         [success, finalCenter] = ColorStackPickAndPlace(robot, entry, targetPos, homeQ, safetyController);
