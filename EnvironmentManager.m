@@ -1,4 +1,5 @@
-clear; close all; clc;
+close all;
+clc;
 addpath(genpath('Environment'));
 addpath(genpath('UR3'));
 
