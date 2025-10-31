@@ -376,15 +376,16 @@ classdef BookManager < handle
                 finalCenter = [NaN, NaN, NaN];
             end
 
-            logEntry = struct(
-                'robot', char(robotKey), ...
-                'color', char(colorName), ...
-                'position', finalCenter, ...
-                'timestamp', datetime('now'), ...
-                'handle', []);
+            logEntry = struct();
+            logEntry.robot = char(robotKey);
+            logEntry.color = char(colorName);
+            logEntry.position = finalCenter;
+            logEntry.timestamp = datetime('now');
 
             if nargin >= 5
                 logEntry.handle = bookHandle;
+            else
+                logEntry.handle = [];
             end
 
             self.deliveryLog{end+1} = logEntry;
