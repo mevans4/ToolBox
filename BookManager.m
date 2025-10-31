@@ -16,6 +16,11 @@ classdef BookManager < handle
 
         colorStackBases = struct();
         colorStackCounts = struct();
+        colorStackRecords = struct();
+
+        robotDeliveryBases = struct();
+        robotDeliveryCounts = struct();
+        deliveryLog = {};
     end
 
     methods
@@ -29,6 +34,18 @@ classdef BookManager < handle
                 'green', [0.45, -0.525, defaultStackHeight], ...
                 'blue',  [0.15, -0.525, defaultStackHeight], ...
                 'red',   [-0.15, -0.525, defaultStackHeight]);
+            self.colorStackRecords = struct(
+                'green', struct('handle', {}, 'color', {}, 'position', {}, 'topSurface', {}, 'originalVerts', {}, 'height', {}), ...
+                'blue',  struct('handle', {}, 'color', {}, 'position', {}, 'topSurface', {}, 'originalVerts', {}, 'height', {}), ...
+                'red',   struct('handle', {}, 'color', {}, 'position', {}, 'topSurface', {}, 'originalVerts', {}, 'height', {}));
+
+            self.robotDeliveryBases = struct(
+                'Motoman', [0.85, 1.05, defaultStackHeight], ...
+                'Kuka',    [-0.85, -1.05, defaultStackHeight], ...
+                'Aubo',    [1.35, -0.25, defaultStackHeight]);
+            self.robotDeliveryCounts = struct('Motoman', 0, 'Kuka', 0, 'Aubo', 0);
+            self.deliveryLog = {};
+
             self.resetColorStacks();
         end
 
@@ -171,6 +188,8 @@ classdef BookManager < handle
             self.booksPlaced = 0;
             self.originalBookHandles = {};
             self.resetColorStacks();
+            self.robotDeliveryCounts = struct('Motoman', 0, 'Kuka', 0, 'Aubo', 0);
+            self.deliveryLog = {};
             fprintf('Book manager reset\n');
         end
 
@@ -231,6 +250,129 @@ classdef BookManager < handle
 
         function resetColorStacks(self)
             self.colorStackCounts = struct('green', 0, 'blue', 0, 'red', 0);
+            emptyRecord = struct('handle', {}, 'color', {}, 'position', {}, 'topSurface', {}, 'originalVerts', {}, 'height', {});
+            self.colorStackRecords.green = emptyRecord;
+            self.colorStackRecords.blue = emptyRecord;
+            self.colorStackRecords.red = emptyRecord;
+        end
+
+        function registerPlacedBook(self, bookHandle, colorName, finalCenter, finalVerts)
+            if nargin < 5 || isempty(finalVerts)
+                finalVerts = get(bookHandle, 'Vertices');
+            end
+
+            if nargin < 3 || isempty(colorName)
+                colorName = 'unknown';
+            end
+
+            colorName = lower(char(colorName));
+            if ~isfield(self.colorStackRecords, colorName)
+                error('Unknown colour stack "%s" when registering placement.', colorName);
+            end
+
+            entry.handle = bookHandle;
+            entry.color = colorName;
+            entry.position = finalCenter;
+            entry.originalVerts = finalVerts;
+            entry.height = self.estimateBookHeightFromVertices(finalVerts);
+            entry.topSurface = [finalCenter(1), finalCenter(2), max(finalVerts(:, 3))];
+
+            records = self.colorStackRecords.(colorName);
+            records(end+1) = entry; %#ok<AGROW>
+            self.colorStackRecords.(colorName) = records;
+        end
+
+        function entry = popBookFromColorStack(self, colorName)
+            if nargin < 2 || isempty(colorName)
+                entry = [];
+                return;
+            end
+
+            colorName = lower(char(colorName));
+            if ~isfield(self.colorStackRecords, colorName)
+                entry = [];
+                return;
+            end
+
+            records = self.colorStackRecords.(colorName);
+            if isempty(records)
+                entry = [];
+                return;
+            end
+
+            tops = arrayfun(@(r) r.topSurface(3), records);
+            [~, idx] = max(tops);
+            entry = records(idx);
+            records(idx) = [];
+            self.colorStackRecords.(colorName) = records;
+        end
+
+        function pushBookBack(self, colorName, entry)
+            if isempty(entry)
+                return;
+            end
+
+            colorName = lower(char(colorName));
+            if ~isfield(self.colorStackRecords, colorName)
+                return;
+            end
+
+            records = self.colorStackRecords.(colorName);
+            records(end+1) = entry; %#ok<AGROW>
+            self.colorStackRecords.(colorName) = records;
+        end
+
+        function count = getColorStackSize(self, colorName)
+            colorName = lower(char(colorName));
+            if ~isfield(self.colorStackRecords, colorName)
+                count = 0;
+                return;
+            end
+            records = self.colorStackRecords.(colorName);
+            count = numel(records);
+        end
+
+        function targetPos = getRobotDeliveryPosition(self, robotKey)
+            if nargin < 2 || isempty(robotKey)
+                error('Robot identifier required for delivery position lookup.');
+            end
+
+            if isstring(robotKey)
+                robotKey = char(robotKey);
+            end
+
+            robotField = matlab.lang.makeValidName(robotKey);
+            if ~isfield(self.robotDeliveryBases, robotField)
+                error('Unknown robot delivery zone "%s".', robotKey);
+            end
+
+            basePos = self.robotDeliveryBases.(robotField);
+            level = self.robotDeliveryCounts.(robotField);
+            targetPos = [basePos(1), basePos(2), basePos(3) + level * self.bookHeights];
+        end
+
+        function registerDeliveryPlacement(self, robotKey, colorName, finalCenter, bookHandle)
+            if nargin < 4
+                finalCenter = [NaN, NaN, NaN];
+            end
+
+            logEntry = struct(
+                'robot', char(robotKey), ...
+                'color', char(colorName), ...
+                'position', finalCenter, ...
+                'timestamp', datetime('now'), ...
+                'handle', []);
+
+            if nargin >= 5
+                logEntry.handle = bookHandle;
+            end
+
+            self.deliveryLog{end+1} = logEntry;
+
+            robotField = matlab.lang.makeValidName(robotKey);
+            if isfield(self.robotDeliveryCounts, robotField)
+                self.robotDeliveryCounts.(robotField) = self.robotDeliveryCounts.(robotField) + 1;
+            end
         end
 
         function colorStr = getBookColorString(self, bookInfo)
@@ -459,6 +601,21 @@ classdef BookManager < handle
 
             if isnan(height) && isfield(actualBook, 'topSurfacePosition') && ~isempty(actualBook.topSurfacePosition)
                 height = actualBook.topSurfacePosition(3);
+            end
+        end
+
+        function height = estimateBookHeightFromVertices(~, verts)
+            if isempty(verts)
+                height = NaN;
+                return;
+            end
+
+            try
+                minZ = min(verts(:, 3));
+                maxZ = max(verts(:, 3));
+                height = maxZ - minZ;
+            catch
+                height = NaN;
             end
         end
     end
