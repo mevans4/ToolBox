@@ -10,9 +10,11 @@ classdef BookSpawner
             for i = 1:size(book_data_green, 1)
                 posG = book_data_green(i, 1:3);
                 colourG = book_data_green(i, 4:6);
-                book_handle_G = PlaceObject('Environment\greenBook.ply', posG);
+                sourceFile = 'Environment\greenBook.ply';
+                book_handle_G = PlaceObject(sourceFile, posG);
                 set(book_handle_G, 'FaceColor', colourG);
                 set(book_handle_G,'EdgeColor',  'none');
+                set(book_handle_G, 'UserData', struct('sourceFile', sourceFile, 'colorName', 'green'));
             end
 
             % BOOK PLACEMENT - Blue Books
@@ -24,9 +26,11 @@ classdef BookSpawner
             for i = 1:size(book_data_blue, 1)
                 posB = book_data_blue(i, 1:3);
                 colourB = book_data_blue(i, 4:6);
-                book_handle_B = PlaceObject('Environment\blueBook.ply', posB);
+                sourceFile = 'Environment\blueBook.ply';
+                book_handle_B = PlaceObject(sourceFile, posB);
                 set(book_handle_B, 'FaceColor', colourB);
                 set(book_handle_B,'EdgeColor', 'none');
+                set(book_handle_B, 'UserData', struct('sourceFile', sourceFile, 'colorName', 'blue'));
             end
 
             % BOOK PLACEMENT - Red Books
@@ -38,9 +42,11 @@ classdef BookSpawner
             for i = 1:size(book_data_red, 1)
                 posR = book_data_red(i, 1:3);
                 colourR = book_data_red(i, 4:6);
-                book_handle_R = PlaceObject('Environment\redBook.ply', posR);
+                sourceFile = 'Environment\redBook.ply';
+                book_handle_R = PlaceObject(sourceFile, posR);
                 set(book_handle_R, 'FaceColor', colourR);
                 set(book_handle_R,'EdgeColor', 'none');
+                set(book_handle_R, 'UserData', struct('sourceFile', sourceFile, 'colorName', 'red'));
             end
         end
         
