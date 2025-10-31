@@ -1,15 +1,15 @@
-function delivered = KukaPickAndPlace(robot, bookManager, colorName, safetyController)
-%KUKAPICKANDPLACE Coordinate KUKA KR3 colour-specific delivery.
+function delivered = AuboPickAndPlace(robot, bookManager, colorName, safetyController)
+%AUBOPICKANDPLACE Coordinate AUBO i5 colour-specific book delivery.
 
     if nargin < 4
         safetyController = [];
     end
 
     delivered = 0;
-    fprintf('Starting KUKA KR3 delivery for %s books...\n', char(colorName));
+    fprintf('Starting AUBO i5 delivery for %s books...\n', char(colorName));
 
-    homeQ = getKukaHomePosition(robot);
-    moveKukaToHomePosition(robot, homeQ, safetyController);
+    homeQ = getAuboHomePosition(robot);
+    moveAuboToHomePosition(robot, homeQ, safetyController);
 
     while true
         entry = bookManager.popBookFromColorStack(colorName);
@@ -17,34 +17,35 @@ function delivered = KukaPickAndPlace(robot, bookManager, colorName, safetyContr
             break;
         end
 
-        targetPos = bookManager.getRobotDeliveryPosition('Kuka');
+        targetPos = bookManager.getRobotDeliveryPosition('Aubo');
         [success, finalCenter] = ColorStackPickAndPlace(robot, entry, targetPos, homeQ, safetyController);
         if ~success
-            fprintf('KUKA failed to place book - returning entry to stack.\n');
+            fprintf('AUBO failed to place book - returning entry to stack.\n');
             bookManager.pushBookBack(colorName, entry);
             break;
         end
 
         delivered = delivered + 1;
-        bookManager.registerDeliveryPlacement('Kuka', colorName, finalCenter, entry.handle);
-        fprintf('KUKA placed %s book %d at [%.3f, %.3f, %.3f].\n', ...
+        bookManager.registerDeliveryPlacement('Aubo', colorName, finalCenter, entry.handle);
+        fprintf('AUBO placed %s book %d at [%.3f, %.3f, %.3f].\n', ...
             char(colorName), delivered, finalCenter(1), finalCenter(2), finalCenter(3));
 
-        moveKukaToHomePosition(robot, homeQ, safetyController);
+        moveAuboToHomePosition(robot, homeQ, safetyController);
     end
 
-    fprintf('KUKA delivery complete: %d books handled.\n', delivered);
+    fprintf('AUBO delivery complete: %d books handled.\n', delivered);
 end
 
-function homeQ = getKukaHomePosition(robot)
+function homeQ = getAuboHomePosition(robot)
     if isprop(robot, 'homeQ') && ~isempty(robot.homeQ)
         homeQ = robot.homeQ;
     else
-        homeQ = zeros(1, robot.model.n);
+        homeQ = robot.initialJointAngles;
     end
+    homeQ = homeQ(:)';
 end
 
-function moveKukaToHomePosition(robot, homeQ, safetyController)
+function moveAuboToHomePosition(robot, homeQ, safetyController)
     if nargin < 3
         safetyController = [];
     end
@@ -58,7 +59,7 @@ function moveKukaToHomePosition(robot, homeQ, safetyController)
         return;
     end
 
-    steps = 35;
+    steps = 40;
     qTraj = jtraj(qCurrent, homeQ, steps);
     for i = 1:steps
         qStep = qTraj(i, :);

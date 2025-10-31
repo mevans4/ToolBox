@@ -1,29 +1,8 @@
-% Main execution script with GUI
+% Main execution entry point for the multi-robot sorting cell with GUI safety controls
 clear; close all; clc;
 
-% Setup environment
-EnvironmentManager;
+controller = WorkspaceController();
+controller.launch();
 
-% Spawn books (these are added to the existing environment)
-fprintf('Spawning books...\n');
-BookSpawner.spawnBooks();
-BookSpawner.drawBookStartMarkers();
-
-% Create robots
-fprintf('Creating robots...\n');
-robots = RobotFactory.createAllRobots();
-
-% Initialize book manager
-bookManager = BookManager();
-
-%UR3 Code
-BookPickAndPlace(robots{1}, bookManager);
-
-%Motoman
-MotomanPickAndPlace(robots{2}, bookManager, [4, 3]);
-
-%KUKA
-KukaPickAndPlace(robots{3}, bookManager, {'green','green','blue','blue','red','red'});
-
-
-
+% Expose controller handle for interactive use from the MATLAB base workspace
+assignin('base', 'workspaceController', controller);
