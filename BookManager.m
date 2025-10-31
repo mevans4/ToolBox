@@ -30,19 +30,23 @@ classdef BookManager < handle
             self.booksPlaced = 0;
 
             defaultStackHeight = self.bookHeights - 0.05;
-            self.colorStackBases = struct(
-                'green', [0.45, -0.525, defaultStackHeight], ...
-                'blue',  [0.15, -0.525, defaultStackHeight], ...
-                'red',   [-0.15, -0.525, defaultStackHeight]);
-            self.colorStackRecords = struct(
-                'green', struct('handle', {}, 'color', {}, 'position', {}, 'topSurface', {}, 'originalVerts', {}, 'height', {}), ...
-                'blue',  struct('handle', {}, 'color', {}, 'position', {}, 'topSurface', {}, 'originalVerts', {}, 'height', {}), ...
-                'red',   struct('handle', {}, 'color', {}, 'position', {}, 'topSurface', {}, 'originalVerts', {}, 'height', {}));
 
-            self.robotDeliveryBases = struct(
-                'Motoman', [0.85, 1.05, defaultStackHeight], ...
-                'Kuka',    [-0.85, -1.05, defaultStackHeight], ...
-                'Aubo',    [1.35, -0.25, defaultStackHeight]);
+            self.colorStackBases = struct();
+            self.colorStackBases.green = [0.45, -0.525, defaultStackHeight];
+            self.colorStackBases.blue = [0.15, -0.525, defaultStackHeight];
+            self.colorStackBases.red = [-0.15, -0.525, defaultStackHeight];
+
+            emptyRecord = struct('handle', {}, 'color', {}, 'position', {}, ...
+                                 'topSurface', {}, 'originalVerts', {}, 'height', {});
+            self.colorStackRecords = struct();
+            self.colorStackRecords.green = emptyRecord;
+            self.colorStackRecords.blue = emptyRecord;
+            self.colorStackRecords.red = emptyRecord;
+
+            self.robotDeliveryBases = struct();
+            self.robotDeliveryBases.Motoman = [0.85, 1.05, defaultStackHeight];
+            self.robotDeliveryBases.Kuka = [-0.85, -1.05, defaultStackHeight];
+            self.robotDeliveryBases.Aubo = [1.35, -0.25, defaultStackHeight];
             self.robotDeliveryCounts = struct('Motoman', 0, 'Kuka', 0, 'Aubo', 0);
             self.deliveryLog = {};
 
@@ -71,98 +75,7 @@ classdef BookManager < handle
                     maxVerts = max(verts);
                     topSurfacePos = [objPos(1), objPos(2), maxVerts(3)];
 
-                    colorInfo = self.captureColorInformation(obj);
-
-                    actualBooks{end+1} = struct(...
-                        'handle', obj, ...
-                        'position', objPos, ...
-                        'originalVerts', verts, ...
-                        'topSurfacePosition', topSurfacePos, ...
-                        'faceColor', colorInfo.faceColor, ...
-                        'colorName', colorInfo.colorName, ...
-                        'sourceFile', colorInfo.sourceFile);
-                end
-            end
-
-            fprintf('Found %d books\n', length(actualBooks));
-            self.matchBooksToPositions(actualBooks);
-
-            fprintf('Book order:\n');
-            for i = 1:length(self.originalBookHandles)
-                bookInfo = self.originalBookHandles{i};
-                fprintf('  %d. %s book at [%.3f, %.3f, %.3f]\n', ...
-                    i, self.getBookColorString(bookInfo), ...
-                    bookInfo.position(1), bookInfo.position(2), bookInfo.position(3));
-            end
-        end
-
-        function matchBooksToPositions(self, actualBooks)
-            self.originalBookHandles = {};
-
-            totalBooks = length(actualBooks);
-            if totalBooks ~= 6
-                fprintf('Warning: Expected 6 books, found %d\n', totalBooks);
-            end
-
-            for i = 1:totalBooks
-                actualBook = actualBooks{i};
-                [colorName, colorIndex, colorRGB] = self.determineBookColor(actualBook);
-
-                bookHeight = self.estimateBookHeight(actualBook);
-
-                bookInfo = struct(...
-                    'handle', actualBook.handle, ...
-                    'originalVerts', actualBook.originalVerts, ...
-                    'position', actualBook.position, ...
-                    'topSurfacePosition', actualBook.topSurfacePosition, ...
-                    'color', colorName, ...
-                    'colorRGB', colorRGB, ...
-                    'height', bookHeight);
-
-                if ~isnan(colorIndex)
-                    bookInfo.colorIndex = colorIndex;
-                end
-
-                self.originalBookHandles{end+1} = bookInfo;
-            end
-        end
-
-        function colorStr = colorIndexToString(~, colorIndex)
-            switch colorIndex
-                case 1, colorStr = 'green';
-                case 2, colorStr = 'blue';
-                case 3, colorStr = 'red';
-                otherwise, colorStr = 'unknown';
-            end
-        end
-
-        function [bookPos, bookColor, bookIndex, bookHandle, originalVerts, topSurfacePos] = getNextBook(self)
-            if isempty(self.originalBookHandles) || self.currentBookIndex > length(self.originalBookHandles)
-                bookPos = []; bookColor = ''; bookIndex = 0;
-                bookHandle = []; originalVerts = []; topSurfacePos = [];
-                return;
-            end
-
-            bookInfo = self.originalBookHandles{self.currentBookIndex};
-            bookPos = bookInfo.position;
-            bookHandle = bookInfo.handle;
-            originalVerts = bookInfo.originalVerts;
-            topSurfacePos = bookInfo.topSurfacePosition;
-            bookIndex = self.currentBookIndex;
-            bookColor = self.getBookColorString(bookInfo);
-
-            fprintf('Next book: %s at [%.3f, %.3f, %.3f] (%d/%d)\n', ...
-                bookColor, bookPos(1), bookPos(2), bookPos(3), ...
-                self.currentBookIndex, length(self.originalBookHandles));
-        end
-
-        function removeBook(self, bookColor, bookIndex)
-            if bookIndex <= length(self.originalBookHandles)
-                fprintf('Removed %s book %d\n', bookColor, bookIndex);
-                self.currentBookIndex = self.currentBookIndex + 1;
-            end
-        end
-
+@@ -149,50 +170,52 @@ classdef BookManager < handle
         function targetPos = getTargetPosition(self, ~)
             switch self.booksPlaced
                 case 0
@@ -215,16 +128,7 @@ classdef BookManager < handle
                     targetPos = [-0.5, 0.525, 0+0.005];
                 case 4
                     targetPos = [-0.5, 0.525, 0.079+0.005];
-                otherwise
-                    targetPos = [];
-            end
-        end
-
-        function finalPos = getMotomanFinalPosition(self, bookIndex)
-            if bookIndex == 4
-                finalPos = [0, 1.05, 0.079];
-            else
-                finalPos = [0, 1.05, 0.079*2];
+@@ -209,50 +232,173 @@ classdef BookManager < handle
             end
         end
 
@@ -398,186 +302,7 @@ classdef BookManager < handle
                 otherwise,    colorIndex = NaN;
             end
         end
-
-        function [colorName, colorIndex, colorRGB] = determineBookColor(self, actualBook)
-            [colorRGB, explicitName] = self.extractColorData(actualBook);
-
-            if ~isempty(explicitName)
-                colorName = lower(char(explicitName));
-                colorIndex = self.colorStringToIndex(colorName);
-                if isnan(colorIndex)
-                    [mappedName, mappedIndex] = self.mapRgbToKnownColor(colorRGB);
-                    if ~strcmp(mappedName, 'unknown')
-                        colorName = mappedName;
-                        colorIndex = mappedIndex;
-                    end
-                end
-            else
-                [colorName, colorIndex] = self.mapRgbToKnownColor(colorRGB);
-            end
-
-            if isempty(colorName)
-                colorName = 'unknown';
-            end
-
-            if all(isnan(colorRGB))
-                colorRGB = [];
-            end
-        end
-
-        function [rgb, explicitName] = extractColorData(self, actualBook)
-            rgb = [NaN, NaN, NaN];
-            explicitName = '';
-
-            if isfield(actualBook, 'colorName') && ~isempty(actualBook.colorName)
-                explicitName = lower(char(actualBook.colorName));
-                namedRgb = self.namedColorToRgb(explicitName);
-                if ~isempty(namedRgb)
-                    rgb = namedRgb;
-                    return;
-                end
-            end
-
-            if isfield(actualBook, 'faceColor') && ~isempty(actualBook.faceColor)
-                [rgb, explicitName] = self.parseColorValue(actualBook.faceColor);
-            end
-
-            if all(isnan(rgb)) && isfield(actualBook, 'handle') && ~isempty(actualBook.handle) && isgraphics(actualBook.handle)
-                faceColor = get(actualBook.handle, 'FaceColor');
-                [rgb, explicitName] = self.parseColorValue(faceColor);
-            end
-
-            if all(isnan(rgb)) && isfield(actualBook, 'handle') && ~isempty(actualBook.handle) && isgraphics(actualBook.handle)
-                try
-                    faceVertexCData = get(actualBook.handle, 'FaceVertexCData');
-                    if isnumeric(faceVertexCData)
-                        rgb = self.averageColorArray(faceVertexCData);
-                    end
-                catch
-                end
-            end
-
-            if all(isnan(rgb)) && isfield(actualBook, 'sourceFile') && ~isempty(actualBook.sourceFile)
-                [explicitName, rgb] = self.deriveColorFromSource(actualBook.sourceFile);
-            end
-        end
-
-        function [colorName, colorIndex] = mapRgbToKnownColor(self, rgb)
-            if isempty(rgb) || any(isnan(rgb))
-                colorName = 'unknown';
-                colorIndex = NaN;
-                return;
-            end
-
-            rgb = double(rgb(:)');
-            maxValue = max(rgb);
-            if maxValue > 1
-                rgb = rgb / maxValue;
-            end
-
-            knownColors = struct(...
-                'green', [0, 1, 0], ...
-                'blue',  [0, 0, 1], ...
-                'red',   [1, 0, 0]);
-
-            names = fieldnames(knownColors);
-            diffs = zeros(length(names), 1);
-            for idx = 1:length(names)
-                ref = knownColors.(names{idx});
-                diffs(idx) = norm(rgb - ref);
-            end
-
-            [minDiff, minIdx] = min(diffs);
-            tolerance = 0.35;
-            if minDiff <= tolerance
-                colorName = names{minIdx};
-                colorIndex = self.colorStringToIndex(colorName);
-            else
-                colorName = 'unknown';
-                colorIndex = NaN;
-            end
-        end
-
-        function colorInfo = captureColorInformation(self, handle)
-            colorInfo = struct('faceColor', [], 'colorName', '', 'sourceFile', '');
-
-            if isempty(handle) || ~isgraphics(handle)
-                return;
-            end
-
-            faceColor = get(handle, 'FaceColor');
-            if ~isempty(faceColor)
-                [parsedRgb, explicitName] = self.parseColorValue(faceColor);
-                if ~all(isnan(parsedRgb))
-                    colorInfo.faceColor = parsedRgb;
-                end
-                if ~isempty(explicitName)
-                    colorInfo.colorName = explicitName;
-                end
-            end
-
-            userData = get(handle, 'UserData');
-            if ischar(userData) || (isstring(userData) && isscalar(userData))
-                colorInfo.sourceFile = char(userData);
-            elseif isstruct(userData) && isfield(userData, 'sourceFile')
-                colorInfo.sourceFile = userData.sourceFile;
-                if isfield(userData, 'colorName')
-                    colorInfo.colorName = userData.colorName;
-                end
-            end
-        end
-
-        function [colorName, rgb] = deriveColorFromSource(self, sourceFile)
-            colorName = 'unknown';
-            rgb = [NaN, NaN, NaN];
-
-            if isempty(sourceFile)
-                return;
-            end
-
-            lowerPath = lower(sourceFile);
-            if contains(lowerPath, 'green')
-                colorName = 'green';
-            elseif contains(lowerPath, 'blue')
-                colorName = 'blue';
-            elseif contains(lowerPath, 'red')
-                colorName = 'red';
-            end
-
-            if ~strcmp(colorName, 'unknown')
-                rgb = self.namedColorToRgb(colorName);
-            end
-        end
-
-        function [rgb, explicitName] = parseColorValue(self, value)
-            explicitName = '';
-            rgb = [NaN, NaN, NaN];
-
-            if isnumeric(value) && numel(value) == 3
-                rgb = double(value(:)');
-            elseif ischar(value) || (isstring(value) && isscalar(value))
-                candidate = lower(char(value));
-                namedRgb = self.namedColorToRgb(candidate);
-                if ~isempty(namedRgb)
-                    explicitName = candidate;
-                    rgb = namedRgb;
-                end
-            end
-        end
-
-        function rgb = namedColorToRgb(~, colorName)
-            switch lower(char(colorName))
-                case 'green', rgb = [0, 1, 0];
-                case 'blue',  rgb = [0, 0, 1];
-                case 'red',   rgb = [1, 0, 0];
-                otherwise,    rgb = [];
-            end
-        end
-
-        function rgb = averageColorArray(~, colorArray)
-            if isempty(colorArray) || size(colorArray, 2) < 3
-                rgb = [NaN, NaN, NaN];
-                return;
+@@ -439,27 +585,42 @@ classdef BookManager < handle
             end
 
             rgb = mean(double(colorArray(:, 1:3)), 1);
