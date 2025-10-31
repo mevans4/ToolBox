@@ -13,6 +13,9 @@ classdef BookManager < handle
             [-1.75,  0.2, 0.079*0, 1];
             [-1.75, -0.2, 0.079*0, 1]
             };
+
+        colorStackBases = struct();
+        colorStackCounts = struct();
     end
 
     methods
@@ -20,6 +23,13 @@ classdef BookManager < handle
             self.originalBookHandles = {};
             self.currentBookIndex = 1;
             self.booksPlaced = 0;
+
+            defaultStackHeight = self.bookHeights - 0.05;
+            self.colorStackBases = struct(
+                'green', [0.45, -0.525, defaultStackHeight], ...
+                'blue',  [0.15, -0.525, defaultStackHeight], ...
+                'red',   [-0.15, -0.525, defaultStackHeight]);
+            self.resetColorStacks();
         end
 
         function storeBookHandles(self)
@@ -160,6 +170,7 @@ classdef BookManager < handle
             self.currentBookIndex = 1;
             self.booksPlaced = 0;
             self.originalBookHandles = {};
+            self.resetColorStacks();
             fprintf('Book manager reset\n');
         end
 
@@ -196,6 +207,30 @@ classdef BookManager < handle
             else
                 finalPos = [0, 1.05, 0.079*2];
             end
+        end
+
+        function targetPos = getColorStackPosition(self, colorIdentifier)
+            if isnumeric(colorIdentifier)
+                colorName = self.colorIndexToString(colorIdentifier);
+            else
+                colorName = lower(char(colorIdentifier));
+            end
+
+            if ~isfield(self.colorStackCounts, colorName)
+                error('Unknown color stack request: %s', colorName);
+            end
+
+            level = self.colorStackCounts.(colorName);
+            basePos = self.colorStackBases.(colorName);
+            targetPos = [basePos(1), basePos(2), basePos(3) + level * self.bookHeights];
+            self.colorStackCounts.(colorName) = level + 1;
+
+            fprintf('Assigned %s stack position: [%.3f, %.3f, %.3f] (level %d)\n', ...
+                colorName, targetPos(1), targetPos(2), targetPos(3), level + 1);
+        end
+
+        function resetColorStacks(self)
+            self.colorStackCounts = struct('green', 0, 'blue', 0, 'red', 0);
         end
     end
 end
