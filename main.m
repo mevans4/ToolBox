@@ -23,7 +23,7 @@ BookPickAndPlace(robots{1}, bookManager);
 MotomanPickAndPlace(robots{2}, bookManager, [4, 3]);
 
 %KUKA
-KukaPickAndPlace(robots{3}, bookManager, [])
+KukaPickAndPlace(robots{3}, bookManager, {'green','green','blue','blue','red','red'});
 
 
 
